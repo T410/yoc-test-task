@@ -1,0 +1,68 @@
+@font-face {
+  font-family: 'Rift Bold';
+  src: url('./fonts/rift-bold.otf') format('woff2'),
+  url('./fonts/rift-bold.otf') format('woff'),
+  url('./fonts/rift-bold.otf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Muli';
+  src: url('./fonts/muli-regular.ttf') format('woff2'),
+  url('./fonts/muli-regular.ttf') format('woff'),
+  url('./fonts/muli-regular.ttf') format('truetype');
+}
+
+html {
+  font-size: 12pt;
+  font-family: 'Muli', sans-serif;
+  color: #1c213e;
+}
+
+body {
+  margin: 0 5% 6em;
+  font-size: 12pt;
+  font-family: 'Muli', sans-serif;
+}
+
+.content {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.content .block {
+  flex-basis: 48%;
+}
+
+@media (max-width: 550px) {
+  .content .block {
+    flex-basis: 100%;
+  }
+}
+
+.content .block .block-header::before {
+  content: '---- '
+}
+
+.header h2 {
+  font-size: 40pt;
+  margin: 0.7em 0;
+}
+
+.block h4 {
+  font-size: 26pt;
+  color: #2494a2;
+  margin: 0.9em 0;
+}
+
+@media (max-width: 550px) {
+  .block h4 {
+    margin: 0.4em 0;
+  }
+}
+
+.header h2, .block h4 {
+  font-family: 'Rift Bold', sans-serif;
+  text-transform: uppercase;
+}
