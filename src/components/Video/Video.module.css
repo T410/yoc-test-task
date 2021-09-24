@@ -1,0 +1,21 @@
+.outerContainer {
+	position: relative;
+}
+
+.closeButtonContainer {
+	position: absolute;
+	z-index: 9;
+	top: 0.5rem;
+	right: 0.5rem;
+}
+
+.muteButtonContainer {
+	position: absolute;
+	z-index: 9;
+	bottom: 0.5rem;
+	right: 0.5rem;
+}
+
+.innerContainer {
+	width: 100%;
+}
