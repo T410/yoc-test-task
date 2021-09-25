@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import { usePrevious } from "../../CustomHooks";
 import style from "./Video.module.css";
 import { poster, volume_off, volume_on } from "../../assets";
 
@@ -79,6 +80,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [visiblePercentage, setVisiblePercentage] = useState(0); //This is the actual visibility percentage of the video.
 	const [blur, setBlur] = useState(false); //Using the term blur/focus throughout the code. Blur is fired when the user tasks away from the page, and focus is fired vice versa.
+	const prevBlur = usePrevious(blur); //Previous blur value. A custom hook
 
 	//Video event fire flags
 	const [videoViewed, setVideoViewed] = useState(false);
@@ -131,61 +133,74 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 	 */
 	const playPauseHandler = useCallback(
 		(play: boolean, eventBy: EventBy = EventBy.AUTO): void => {
-			if (play !== isPlaying) {
-				setIsPlaying(play);
-				if (videoRef.current) {
-					if (play) {
-						// setLastPlayTime(Date.now());
-						videoRef.current.play();
-						onCustomEvent(VideoEngagements.VIDEO_PLAY, { eventBy });
-					} else {
-						videoRef.current.pause();
-						onCustomEvent(VideoEngagements.VIDEO_PAUSE, { eventBy });
-					}
+			//If isPlaying is not equal to play and videRef.current exists
+			if (play !== isPlaying && videoRef.current) {
+				if (play && !isPlaying && !ended && visiblePercentage >= 50) {
+					videoRef.current.play();
+					onCustomEvent(VideoEngagements.VIDEO_PLAY, { eventBy });
+					setIsPlaying(true);
+				} else if (isPlaying) {
+					videoRef.current.pause();
+					onCustomEvent(VideoEngagements.VIDEO_PAUSE, { eventBy });
+					setIsPlaying(false);
 				}
 			}
 		},
-		[onCustomEvent, isPlaying]
+		[onCustomEvent, isPlaying, ended, visiblePercentage]
 	);
 
+	/**
+	 * Time update listener function of the video
+	 * @param {React.SyntheticEvent} e
+	 */
 	const timeUpdateListener = (e: React.SyntheticEvent): void => {
 		const video = e.target as HTMLVideoElement,
 			{ currentTime } = video;
+
 		if (!videoViewed) {
+			//2 seconds view time
 			if (currentTime >= 2) {
 				setVideoViewed(true);
 				onCustomEvent(VideoEngagements.VIDEO_VIEWED);
 			}
 		}
-
 		if (!firstQuartileFired) {
+			//25% view time
 			if (currentTime > video.duration * 0.25) {
 				setFirstQuartileFired(true);
 				onCustomEvent(VideoEngagements.VIDEO_FIRST_QUARTILE);
 			}
 		} else if (!halfFired) {
+			//50% view time
 			if (currentTime > video.duration * 0.5) {
 				setHalfFired(true);
 				onCustomEvent(VideoEngagements.VIDEO_HALF);
 			}
 		} else if (!thirdQuartileFired) {
+			//75% view time
 			if (currentTime > video.duration * 0.75) {
 				setThirdQuartileFired(true);
 				onCustomEvent(VideoEngagements.VIDEO_THIRD_QUARTILE);
 			}
 		} else if (!ended) {
-			//I had issues with onEnded event. I used setEnded(true) in the listener. But
+			//100% view time
+			//I had issues with onEnded event. I used setEnded(true) in the listener
 			//I had to manually check if the video is ended or not
-			if (currentTime >= video.duration) {
-				// setIsPlaying(false);
+			if (videoRef.current?.ended) {
+				//Remove the scrollListener since the video does not loop and we won't be needing it anymore
 				document.removeEventListener("scroll", scrollListener);
 				setEnded(true);
+				//Caling this with ended parameter. Note that this function was passed from VideoWrapper
 				setIsFinished(true);
 				onCustomEvent(VideoEngagements.VIDEO_FINISH);
 			}
 		}
 	};
 
+	/**
+	 * To fire engagement `VIDEO_LOAD_START`
+	 * Combining `VIDEO_LOAD_START` and `VIDEO_PLAY` may give us some idea about the content quality (Will the user skip reading and scroll to the bottom fast or not)
+	 */
 	const loadStartListener = () => {
 		onCustomEvent(VideoEngagements.VIDEO_LOAD_START);
 	};
@@ -196,37 +211,44 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 	const scrollListener = useCallback(() => {
 		if (videoRef.current) {
 			const isVisible = isInViewport(videoRef.current);
-			if (isVisible) {
-				setVisiblePercentage(calculateVisibilityPercentage(videoRef.current));
-				if (visiblePercentage >= 50) {
-					!ended && playPauseHandler(true);
-				} else {
-					playPauseHandler(false);
-				}
-			} else if (visiblePercentage > 0) {
-				setVisiblePercentage(0);
+			const percentage = calculateVisibilityPercentage(videoRef.current);
+			setVisiblePercentage(percentage);
+			if (isVisible && percentage >= 50) {
+				//If the visiblity percentage is greater than or equal to 50%, then play it
+				playPauseHandler(true);
+			} else {
+				//If the video can not be played, then pause it
 				playPauseHandler(false);
 			}
 		}
-	}, [ended, visiblePercentage, playPauseHandler]);
+	}, [playPauseHandler]);
 
+	/**
+	 * visibilitychange listener function that updates blur state
+	 */
 	const blurFocusListener = useCallback(() => {
 		if (document.visibilityState === "hidden") {
 			setBlur(true);
 			onCustomEvent(VideoEngagements.BLUR);
 		} else {
-			onCustomEvent(VideoEngagements.FOCUS);
 			setBlur(false);
+			onCustomEvent(VideoEngagements.FOCUS);
 		}
 	}, [onCustomEvent]);
 
 	useEffect(() => {
-		if (blur) {
-			playPauseHandler(false);
-		} else if (!ended && visiblePercentage >= 50) {
-			playPauseHandler(true);
+		//Checking if blur value has changed or not. So the code block in this if will only run when blur dependency changes.
+		//Normally when one of the dependency changes, the callback runs
+		if (prevBlur !== blur) {
+			if (blur) {
+				//If the user task away from the page (Goes to home screen of their device or goes to another tab), pause the video
+				playPauseHandler(false);
+			} else {
+				//If the video has not yet been finished and it is more than 50% visible in the viewport, play the video
+				playPauseHandler(true);
+			}
 		}
-	}, [blur, ended, visiblePercentage, playPauseHandler]);
+	}, [prevBlur, blur, playPauseHandler]);
 
 	useEffect(() => {
 		document.addEventListener("scroll", scrollListener);
