@@ -71,16 +71,14 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	//Video element
 	const videoRef = useRef<HTMLVideoElement>(null);
 
-	const [loaded, setLoaded] = useState(false);
 	const [isPlaying, setIsPlaying] = useState(false);
-	const [isFirstStart, setIsFirstStart] = useState(true);
-	const [isVisible, setIsVisible] = useState(false);
+	const [visiblePercentage, setVisiblePercentage] = useState(0);
 
 	//Video event fire flags
 	const [firstQuartileFired, setFirstQuartileFired] = useState(false);
 	const [halfFired, setHalfFired] = useState(false);
 	const [thirdQuartileFired, setThirdQuartileFired] = useState(false);
-	const [finishFired, setFinishFired] = useState(false);
+	const [ended, setEnded] = useState(false);
 
 	/**
 	 * Checks and returns boolean if the given element is visible on the viewport
@@ -128,7 +126,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 		(play: boolean, data: {}): void => {
 			setIsPlaying(play);
 			if (videoRef.current) {
-				if (play && loaded) {
+				if (play) {
 					videoRef.current.play();
 					onCustomEvent(VideoEngagements.VIDEO_PLAY, data);
 				} else {
@@ -137,50 +135,32 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 				}
 			}
 		},
-		[onCustomEvent, loaded]
+		[onCustomEvent]
 	);
 
 	/**
 	 * Listener function that binds to the document's scroll event. Calculations for the visibility of the adunit are done here
 	 */
 	const scrollListener = useCallback(() => {
-		let isVisible = false,
-			visiblePercentage: number;
-
 		//If the video element exists
-		if (videoRef.current) {
-			isVisible = isInViewport(videoRef.current);
+		if (!ended && videoRef.current) {
+			const isVisible = isInViewport(videoRef.current);
 
+			let data = { eventBy: EventBy.AUTO };
 			if (isVisible) {
 				//No need to calculate the percentage if the video is not in the viewport. So the calculation is done in isVisible if check block
-				visiblePercentage = calculateVisibilityPercentage(videoRef.current);
-
+				setVisiblePercentage(calculateVisibilityPercentage(videoRef.current));
 				if (visiblePercentage >= 50) {
-					setIsVisible(true);
-					let data: { eventBy: EventBy; firstPlay?: boolean } = { eventBy: EventBy.AUTO };
-
-					if (isFirstStart) {
-						data.firstPlay = true;
-						setIsFirstStart(false);
-					} else {
-						data.firstPlay = false;
-					}
-
 					!isPlaying && playPauseHandler(true, data);
 				} else {
-					//Pause it if not
-					isPlaying && playPauseHandler(!isPlaying, { eventBy: EventBy.AUTO });
+					isPlaying && playPauseHandler(false, data);
 				}
+			} else {
+				setVisiblePercentage(0);
+				isPlaying && playPauseHandler(false, data);
 			}
 		}
-	}, [isFirstStart, isPlaying, playPauseHandler]);
-
-	const canPlayThroughListener = useCallback(() => {
-		setLoaded(true);
-		onCustomEvent(VideoEngagements.VIDEO_CAN_PLAY, { timestamp: Date.now() });
-		//If the video is on the screen and visible by default (ie) but canplay
-		isVisible && videoRef.current?.play();
-	}, [onCustomEvent, isVisible]);
+	}, [isPlaying, visiblePercentage, ended, playPauseHandler]);
 
 	const timeUpdateListener = (e: React.SyntheticEvent): void => {
 		const video = e.target as HTMLVideoElement;
@@ -203,8 +183,10 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	};
 
 	const endedListener = () => {
-		setFinishFired(true);
-		onCustomEvent(VideoEngagements.VIDEO_FINISH);
+		if (!ended) {
+			setEnded(true);
+			onCustomEvent(VideoEngagements.VIDEO_FINISH);
+		}
 	};
 
 	const pauseListener = () => {
@@ -216,7 +198,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	};
 
 	const loadStartListener = () => {
-		onCustomEvent(VideoEngagements.VIDEO_LOAD_START, { timestamp: Date.now() });
+		onCustomEvent(VideoEngagements.VIDEO_LOAD_START);
 	};
 
 	useEffect(() => {
@@ -236,7 +218,6 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 			muted={isMuted}
 			autoPlay={false}
 			controls={false}
-			onCanPlayThrough={canPlayThroughListener}
 			onLoadStart={loadStartListener}
 			onTimeUpdate={timeUpdateListener}
 			onPause={pauseListener}
@@ -254,28 +235,13 @@ const VideoWrapper: React.FunctionComponent = () => {
 	const [isMuted, setIsMuted] = useState(true);
 
 	const engage = (engagementName: string, trackOnce: boolean, data?: {}) => {
-		console.log(engagementName, trackOnce, data || "");
+		console.log(engagementName, trackOnce, { ...data, timestamp: Date.now() });
 	};
 
 	const onCustomEvent = (e: VideoEngagements, data?: {}): void => {
 		//Curried engage function that's being used for firing engagements multiple time. Hence `trackOnce = false`
 		const engageMultiple = (eventName: string) => engage(`ENGAGE_${eventName}`, false, data);
-		switch (e) {
-			case VideoEngagements.VIDEO_MUTE:
-			case VideoEngagements.VIDEO_UNMUTE:
-			case VideoEngagements.VIDEO_LOAD_START:
-			case VideoEngagements.VIDEO_CAN_PLAY:
-			case VideoEngagements.VIDEO_PLAY:
-			case VideoEngagements.VIDEO_FIRST_QUARTILE:
-			case VideoEngagements.VIDEO_HALF:
-			case VideoEngagements.VIDEO_THIRD_QUARTILE:
-			case VideoEngagements.VIDEO_FINISH:
-			case VideoEngagements.VIDEO_PAUSE:
-				engageMultiple(e.toString());
-				break;
-			default:
-				break;
-		}
+		engageMultiple(e.toString());
 	};
 
 	const changeMute = (val: boolean) => {
