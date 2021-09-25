@@ -1,11 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import style from "./Video.module.css";
-import { volume_off, volume_on } from "../../assets";
-
-interface VideoControlProps {
-	isMuted: boolean;
-	changeMute: (val: boolean) => void;
-}
+import { poster, volume_off, volume_on } from "../../assets";
 
 enum VideoEngagements {
 	BLUR = "BLUR",
@@ -23,15 +18,21 @@ enum VideoEngagements {
 	VIDEO_VIEWED = "VIDEO_VIEWED",
 }
 
-//Actions caused by the user or automatically. This enum is used in VIDEO_PLAY, VIDEO_PAUSE
+//Actions caused by the user or automatically
 enum EventBy {
 	USER = "USER",
 	AUTO = "AUTO",
 }
 
+interface VideoControlProps {
+	isMuted: boolean;
+	changeMute: (val: boolean) => void;
+}
+
 interface VideoProps {
 	isMuted: boolean;
 	onCustomEvent: (e: VideoEngagements, data?: {}) => void;
+	setIsFinished: (val: boolean) => void;
 }
 
 const VideoControls: React.FunctionComponent<VideoControlProps> = ({ isMuted, changeMute }) => {
@@ -55,7 +56,7 @@ const VideoControls: React.FunctionComponent<VideoControlProps> = ({ isMuted, ch
 	}, [isMuted]);
 
 	/**
-	 * Changes the isMuted state that was passed from VideoWrapper Component
+	 * Calls changeMute function that was passed from VideWrapper
 	 */
 	const onClickMute = (): void => {
 		changeMute(!isMuted);
@@ -70,22 +71,21 @@ const VideoControls: React.FunctionComponent<VideoControlProps> = ({ isMuted, ch
 	);
 };
 
-const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) => {
+const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, setIsFinished }) => {
 	//Video element
 	const videoRef = useRef<HTMLVideoElement>(null);
 
+	//Video states that helps keep track of what's going on
 	const [isPlaying, setIsPlaying] = useState(false);
-	const [isVisible, setIsVisible] = useState(false);
-	const [visiblePercentage, setVisiblePercentage] = useState(0);
-	const [lastPlayTime, setLastPlayTime] = useState<number>();
+	const [visiblePercentage, setVisiblePercentage] = useState(0); //This is the actual visibility percentage of the video.
+	const [blur, setBlur] = useState(false); //Using the term blur/focus throughout the code. Blur is fired when the user tasks away from the page, and focus is fired vice versa.
 
 	//Video event fire flags
+	const [videoViewed, setVideoViewed] = useState(false);
 	const [firstQuartileFired, setFirstQuartileFired] = useState(false);
 	const [halfFired, setHalfFired] = useState(false);
 	const [thirdQuartileFired, setThirdQuartileFired] = useState(false);
 	const [ended, setEnded] = useState(false);
-	const [blur, setBlur] = useState(false);
-	const [videoViewed, setVideoViewed] = useState(false);
 
 	/**
 	 * Checks and returns boolean if the given element is visible on the viewport
@@ -135,7 +135,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 				setIsPlaying(play);
 				if (videoRef.current) {
 					if (play) {
-						setLastPlayTime(Date.now());
+						// setLastPlayTime(Date.now());
 						videoRef.current.play();
 						onCustomEvent(VideoEngagements.VIDEO_PLAY, { eventBy });
 					} else {
@@ -177,19 +177,14 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 			//I had issues with onEnded event. I used setEnded(true) in the listener. But
 			//I had to manually check if the video is ended or not
 			if (currentTime >= video.duration) {
+				// setIsPlaying(false);
+				document.removeEventListener("scroll", scrollListener);
 				setEnded(true);
+				setIsFinished(true);
 				onCustomEvent(VideoEngagements.VIDEO_FINISH);
 			}
 		}
 	};
-
-	// const pauseListener = () => {
-	// 	setIsPlaying(false);
-	// };
-
-	// const playListener = () => {
-	// 	setIsPlaying(true);
-	// };
 
 	const loadStartListener = () => {
 		onCustomEvent(VideoEngagements.VIDEO_LOAD_START);
@@ -201,7 +196,6 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	const scrollListener = useCallback(() => {
 		if (videoRef.current) {
 			const isVisible = isInViewport(videoRef.current);
-			setIsVisible(isVisible);
 			if (isVisible) {
 				setVisiblePercentage(calculateVisibilityPercentage(videoRef.current));
 				if (visiblePercentage >= 50) {
@@ -209,13 +203,14 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 				} else {
 					playPauseHandler(false);
 				}
-			} else {
+			} else if (visiblePercentage > 0) {
+				setVisiblePercentage(0);
 				playPauseHandler(false);
 			}
 		}
 	}, [ended, visiblePercentage, playPauseHandler]);
 
-	const handleVisibilityChange = () => {
+	const blurFocusListener = useCallback(() => {
 		if (document.visibilityState === "hidden") {
 			setBlur(true);
 			onCustomEvent(VideoEngagements.BLUR);
@@ -223,7 +218,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 			onCustomEvent(VideoEngagements.FOCUS);
 			setBlur(false);
 		}
-	};
+	}, [onCustomEvent]);
 
 	useEffect(() => {
 		if (blur) {
@@ -231,18 +226,18 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 		} else if (!ended && visiblePercentage >= 50) {
 			playPauseHandler(true);
 		}
-	}, [blur, ended, visiblePercentage]);
+	}, [blur, ended, visiblePercentage, playPauseHandler]);
 
 	useEffect(() => {
 		document.addEventListener("scroll", scrollListener);
-		document.addEventListener("visibilitychange", handleVisibilityChange);
+		document.addEventListener("visibilitychange", blurFocusListener);
 
 		//For cleaning up the event listeners
 		return () => {
 			document.removeEventListener("scroll", scrollListener);
-			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			document.removeEventListener("visibilitychange", blurFocusListener);
 		};
-	}, [scrollListener]);
+	}, [scrollListener, blurFocusListener]);
 
 	return (
 		<video
@@ -254,41 +249,54 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 			controls={false}
 			onLoadStart={loadStartListener}
 			onTimeUpdate={timeUpdateListener}
-			// onPause={pauseListener}
-			// onPlay={playListener}
-			loop={false} //TODO check if loop is false to prevent looping when scrolling
 			playsInline={true}
 		></video>
 	);
 };
 
 const VideoWrapper: React.FunctionComponent = () => {
-	//To pass the isMuted flag to Video Component from the VideoControls Component.
-	//By passing the setIsMuted function to the VideoControls component the isMuted state updates from the VideoControls Component
+	//To pass isMuted flag to Video Component from VideoControls Component.
+	//By passing setIsMuted function to VideoControls, isMuted state mutes/unmutes the video
 	const [isMuted, setIsMuted] = useState(true);
 
-	const engage = (engagementName: string, trackOnce: boolean, data?: {}) => {
-		console.log(engagementName, trackOnce, { ...data, timestamp: Date.now() });
+	//Passing this hook to video to trigger "video finish". Doing this because iOS behaves weird when you blur and focus the video, after the video finishes. Just shows white screen.
+	//Then use "isFinished" to hide/show the video and the poster image respectively.
+	//PS: using poster attribute also doesn't work after the video finishes.
+	//Well, this behaviour is like hiding the video after it finishes and showing the endcard, obviously
+	const [isFinished, setIsFinished] = useState(false);
+
+	/**
+	 * Fires engagements to the console. Note that this function is putting `ENGAGE_` string before engagementName. ie: `ENGAGE_${eventName}`
+	 * Data gets `timestamp` property and its value is `Date.now()`
+	 * @param {VideoEngagements} engagementName
+	 * @param {object} data
+	 */
+	const engage = (engagementName: VideoEngagements, data?: {}) => {
+		console.log(`ENGAGE_${engagementName.toString()}`, { ...data, timestamp: Date.now() });
 	};
 
-	const onCustomEvent = (e: VideoEngagements, data?: {}): void => {
-		//Curried engage function that's being used for firing engagements multiple time. Hence `trackOnce = false`
-		const engageMultiple = (eventName: string) => engage(`ENGAGE_${eventName}`, false, data);
-		engageMultiple(e.toString());
-	};
-
+	/**
+	 * Gets the new mute state from VideoControls, updates `isMuted` state and fires engagement according to that
+	 * @param {boolean} val New mute state
+	 */
 	const changeMute = (val: boolean) => {
 		setIsMuted(val);
 		const engagementName = val ? VideoEngagements.VIDEO_MUTE : VideoEngagements.VIDEO_UNMUTE;
-		onCustomEvent(engagementName, { eventBy: EventBy.USER });
+		engage(engagementName, { eventBy: EventBy.USER });
 	};
 
 	return (
 		<div className={style.outerContainer}>
-			<VideoControls isMuted={isMuted} changeMute={changeMute} />
-			<div className={style.innerContainer}>
-				<Video isMuted={isMuted} onCustomEvent={onCustomEvent} />
-			</div>
+			{!isFinished ? (
+				<div>
+					<VideoControls isMuted={isMuted} changeMute={changeMute} />
+					<div className={style.innerContainer}>
+						<Video isMuted={isMuted} onCustomEvent={engage} setIsFinished={setIsFinished} />
+					</div>
+				</div>
+			) : (
+				<img className={style.poster} src={poster} alt="airbnb ad poster" />
+			)}
 		</div>
 	);
 };
