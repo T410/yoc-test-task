@@ -72,6 +72,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	const videoRef = useRef<HTMLVideoElement>(null);
 
 	const [isPlaying, setIsPlaying] = useState(false);
+	const [isVisible, setIsVisible] = useState(false);
 	const [visiblePercentage, setVisiblePercentage] = useState(0);
 
 	//Video event fire flags
@@ -79,6 +80,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	const [halfFired, setHalfFired] = useState(false);
 	const [thirdQuartileFired, setThirdQuartileFired] = useState(false);
 	const [ended, setEnded] = useState(false);
+	const [blur, setBlur] = useState(false);
 
 	/**
 	 * Checks and returns boolean if the given element is visible on the viewport
@@ -124,70 +126,55 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	 */
 	const playPauseHandler = useCallback(
 		(play: boolean, data: {}): void => {
-			setIsPlaying(play);
-			if (videoRef.current) {
-				if (play) {
-					videoRef.current.play();
-					onCustomEvent(VideoEngagements.VIDEO_PLAY, data);
-				} else {
-					videoRef.current.pause();
-					onCustomEvent(VideoEngagements.VIDEO_PAUSE, data);
+			if (play !== isPlaying) {
+				setIsPlaying(play);
+				if (videoRef.current) {
+					if (play) {
+						videoRef.current.play();
+						onCustomEvent(VideoEngagements.VIDEO_PLAY, data);
+					} else {
+						videoRef.current.pause();
+						onCustomEvent(VideoEngagements.VIDEO_PAUSE, data);
+					}
 				}
 			}
 		},
-		[onCustomEvent]
+		[onCustomEvent, isPlaying]
 	);
 
-	/**
-	 * Listener function that binds to the document's scroll event. Calculations for the visibility of the adunit are done here
-	 */
-	const scrollListener = useCallback(() => {
-		//If the video element exists
-		if (!ended && videoRef.current) {
-			const isVisible = isInViewport(videoRef.current);
-
-			let data = { eventBy: EventBy.AUTO };
-			if (isVisible) {
-				//No need to calculate the percentage if the video is not in the viewport. So the calculation is done in isVisible if check block
-				setVisiblePercentage(calculateVisibilityPercentage(videoRef.current));
-				if (visiblePercentage >= 50) {
-					!isPlaying && playPauseHandler(true, data);
-				} else {
-					isPlaying && playPauseHandler(false, data);
-				}
-			} else {
-				setVisiblePercentage(0);
-				isPlaying && playPauseHandler(false, data);
-			}
-		}
-	}, [isPlaying, visiblePercentage, ended, playPauseHandler]);
-
 	const timeUpdateListener = (e: React.SyntheticEvent): void => {
-		const video = e.target as HTMLVideoElement;
+		const video = e.target as HTMLVideoElement,
+			{ currentTime } = video;
 		if (!firstQuartileFired) {
-			if (e.timeStamp / 1000 > video.duration * 0.25) {
+			if (currentTime > video.duration * 0.25) {
 				setFirstQuartileFired(true);
 				onCustomEvent(VideoEngagements.VIDEO_FIRST_QUARTILE);
 			}
 		} else if (!halfFired) {
-			if (e.timeStamp / 1000 > video.duration * 0.5) {
+			if (currentTime > video.duration * 0.5) {
 				setHalfFired(true);
 				onCustomEvent(VideoEngagements.VIDEO_HALF);
 			}
 		} else if (!thirdQuartileFired) {
-			if (e.timeStamp / 1000 > video.duration * 0.75) {
+			if (currentTime > video.duration * 0.75) {
 				setThirdQuartileFired(true);
 				onCustomEvent(VideoEngagements.VIDEO_THIRD_QUARTILE);
+			}
+		} else if (!ended) {
+			//I had issues with onEnded event. I used setEnded(true) in the listener. But
+			//I had to manually check if the video is ended or not
+			if (currentTime >= video.duration) {
+				setEnded(true);
+				onCustomEvent(VideoEngagements.VIDEO_FINISH);
 			}
 		}
 	};
 
-	const endedListener = () => {
-		if (!ended) {
-			setEnded(true);
-			onCustomEvent(VideoEngagements.VIDEO_FINISH);
-		}
-	};
+	// const endedListener = useCallback(() => {
+	// 	setEnded(true);
+	// 	onCustomEvent(VideoEngagements.VIDEO_FINISH);
+	// 	videoRef.current?.pause();
+	// }, [onCustomEvent]);
 
 	const pauseListener = () => {
 		setIsPlaying(false);
@@ -201,12 +188,62 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 		onCustomEvent(VideoEngagements.VIDEO_LOAD_START);
 	};
 
+	const checkForPlay = useCallback(() => {
+		let data = { eventBy: EventBy.AUTO };
+		if (videoRef.current) {
+			const isVisible = isInViewport(videoRef.current);
+			setIsVisible(isVisible);
+			if (isVisible) {
+				setVisiblePercentage(calculateVisibilityPercentage(videoRef.current));
+				if (visiblePercentage >= 50) {
+					!ended && playPauseHandler(true, data);
+				} else {
+					playPauseHandler(false, data);
+				}
+			} else {
+				playPauseHandler(false, data);
+			}
+		}
+	}, [ended, visiblePercentage, playPauseHandler]);
+
+	/**
+	 * Listener function that binds to the document's scroll event. Calculations for the visibility of the adunit are done here
+	 */
+	const scrollListener = useCallback(() => {
+		checkForPlay();
+	}, [checkForPlay]);
+
+	const handleVisibilityChange = () => {
+		if (document.visibilityState === "hidden") {
+			setBlur(true);
+			console.log("BLUR");
+			videoRef.current?.pause();
+		} else {
+			setBlur(false);
+			console.log("FOCUS");
+			videoRef.current?.play();
+		}
+	};
+
+	useEffect(() => {
+		if (videoRef.current && !ended && visiblePercentage > 50 && isVisible) {
+			if (blur) {
+				videoRef.current.play();
+			} else {
+				videoRef.current.pause();
+			}
+			setBlur(false);
+		}
+	}, [blur, ended, visiblePercentage, isVisible]);
+
 	useEffect(() => {
 		document.addEventListener("scroll", scrollListener);
+		document.addEventListener("visibilitychange", handleVisibilityChange);
 
 		//For cleaning up the event listeners
 		return () => {
 			document.removeEventListener("scroll", scrollListener);
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
 		};
 	}, [scrollListener]);
 
@@ -222,7 +259,6 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 			onTimeUpdate={timeUpdateListener}
 			onPause={pauseListener}
 			onPlay={playListener}
-			onEnded={endedListener}
 			loop={false} //TODO check if loop is false to prevent looping when scrolling
 			playsInline={true}
 		></video>
