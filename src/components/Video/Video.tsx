@@ -8,6 +8,8 @@ interface VideoControlProps {
 }
 
 enum VideoEngagements {
+	BLUR = "BLUR",
+	FOCUS = "FOCUS",
 	VIDEO_LOAD_START = "VIDEO_LOAD_START",
 	VIDEO_CAN_PLAY = "VIDEO_CAN_PLAY",
 	VIDEO_MUTE = "VIDEO_MUTE",
@@ -18,6 +20,7 @@ enum VideoEngagements {
 	VIDEO_THIRD_QUARTILE = "VIDEO_THIRD_QUARTILE",
 	VIDEO_FINISH = "VIDEO_FINISH",
 	VIDEO_PAUSE = "VIDEO_PAUSE",
+	VIDEO_VIEWED = "VIDEO_VIEWED",
 }
 
 //Actions caused by the user or automatically. This enum is used in VIDEO_PLAY, VIDEO_PAUSE
@@ -74,6 +77,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [isVisible, setIsVisible] = useState(false);
 	const [visiblePercentage, setVisiblePercentage] = useState(0);
+	const [lastPlayTime, setLastPlayTime] = useState<number>();
 
 	//Video event fire flags
 	const [firstQuartileFired, setFirstQuartileFired] = useState(false);
@@ -81,6 +85,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	const [thirdQuartileFired, setThirdQuartileFired] = useState(false);
 	const [ended, setEnded] = useState(false);
 	const [blur, setBlur] = useState(false);
+	const [videoViewed, setVideoViewed] = useState(false);
 
 	/**
 	 * Checks and returns boolean if the given element is visible on the viewport
@@ -125,16 +130,17 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	 * @param data
 	 */
 	const playPauseHandler = useCallback(
-		(play: boolean, data: {}): void => {
+		(play: boolean, eventBy: EventBy = EventBy.AUTO): void => {
 			if (play !== isPlaying) {
 				setIsPlaying(play);
 				if (videoRef.current) {
 					if (play) {
+						setLastPlayTime(Date.now());
 						videoRef.current.play();
-						onCustomEvent(VideoEngagements.VIDEO_PLAY, data);
+						onCustomEvent(VideoEngagements.VIDEO_PLAY, { eventBy });
 					} else {
 						videoRef.current.pause();
-						onCustomEvent(VideoEngagements.VIDEO_PAUSE, data);
+						onCustomEvent(VideoEngagements.VIDEO_PAUSE, { eventBy });
 					}
 				}
 			}
@@ -145,6 +151,13 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 	const timeUpdateListener = (e: React.SyntheticEvent): void => {
 		const video = e.target as HTMLVideoElement,
 			{ currentTime } = video;
+		if (!videoViewed) {
+			if (currentTime >= 2) {
+				setVideoViewed(true);
+				onCustomEvent(VideoEngagements.VIDEO_VIEWED);
+			}
+		}
+
 		if (!firstQuartileFired) {
 			if (currentTime > video.duration * 0.25) {
 				setFirstQuartileFired(true);
@@ -170,71 +183,55 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 		}
 	};
 
-	// const endedListener = useCallback(() => {
-	// 	setEnded(true);
-	// 	onCustomEvent(VideoEngagements.VIDEO_FINISH);
-	// 	videoRef.current?.pause();
-	// }, [onCustomEvent]);
+	// const pauseListener = () => {
+	// 	setIsPlaying(false);
+	// };
 
-	const pauseListener = () => {
-		setIsPlaying(false);
-	};
-
-	const playListener = () => {
-		setIsPlaying(true);
-	};
+	// const playListener = () => {
+	// 	setIsPlaying(true);
+	// };
 
 	const loadStartListener = () => {
 		onCustomEvent(VideoEngagements.VIDEO_LOAD_START);
 	};
 
-	const checkForPlay = useCallback(() => {
-		let data = { eventBy: EventBy.AUTO };
+	/**
+	 * Listener function that binds to the document's scroll event. Calculations for the visibility of the adunit are done here
+	 */
+	const scrollListener = useCallback(() => {
 		if (videoRef.current) {
 			const isVisible = isInViewport(videoRef.current);
 			setIsVisible(isVisible);
 			if (isVisible) {
 				setVisiblePercentage(calculateVisibilityPercentage(videoRef.current));
 				if (visiblePercentage >= 50) {
-					!ended && playPauseHandler(true, data);
+					!ended && playPauseHandler(true);
 				} else {
-					playPauseHandler(false, data);
+					playPauseHandler(false);
 				}
 			} else {
-				playPauseHandler(false, data);
+				playPauseHandler(false);
 			}
 		}
 	}, [ended, visiblePercentage, playPauseHandler]);
 
-	/**
-	 * Listener function that binds to the document's scroll event. Calculations for the visibility of the adunit are done here
-	 */
-	const scrollListener = useCallback(() => {
-		checkForPlay();
-	}, [checkForPlay]);
-
 	const handleVisibilityChange = () => {
 		if (document.visibilityState === "hidden") {
 			setBlur(true);
-			console.log("BLUR");
-			videoRef.current?.pause();
+			onCustomEvent(VideoEngagements.BLUR);
 		} else {
+			onCustomEvent(VideoEngagements.FOCUS);
 			setBlur(false);
-			console.log("FOCUS");
-			videoRef.current?.play();
 		}
 	};
 
 	useEffect(() => {
-		if (videoRef.current && !ended && visiblePercentage > 50 && isVisible) {
-			if (blur) {
-				videoRef.current.play();
-			} else {
-				videoRef.current.pause();
-			}
-			setBlur(false);
+		if (blur) {
+			playPauseHandler(false);
+		} else if (!ended && visiblePercentage >= 50) {
+			playPauseHandler(true);
 		}
-	}, [blur, ended, visiblePercentage, isVisible]);
+	}, [blur, ended, visiblePercentage]);
 
 	useEffect(() => {
 		document.addEventListener("scroll", scrollListener);
@@ -257,8 +254,8 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent }) 
 			controls={false}
 			onLoadStart={loadStartListener}
 			onTimeUpdate={timeUpdateListener}
-			onPause={pauseListener}
-			onPlay={playListener}
+			// onPause={pauseListener}
+			// onPlay={playListener}
 			loop={false} //TODO check if loop is false to prevent looping when scrolling
 			playsInline={true}
 		></video>
