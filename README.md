@@ -1,46 +1,45 @@
-# Getting Started with Create React App
+# YOC Test Task - Video Adunit
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## Commands
 
-## Available Scripts
+Standard react-script command plus `npm run test-e2e`
 
-In the project directory, you can run:
+## Notes
 
-### `npm start`
+### Engagements
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- BLUR
+- FOCUS
+- VIDEO_LOAD_START
+- VIDEO_CAN_PLAY
+- VIDEO_MUTE
+- VIDEO_UNMUTE
+- VIDEO_PLAY
+- VIDEO_FIRST_QUARTILE
+- VIDEO_HALF
+- VIDEO_THIRD_QUARTILE
+- VIDEO_FINISH
+- VIDEO_PAUSE
+- VIDEO_VIEWED
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+Keeping track of user engagements is the core concept of monetization. So I tried my best to add as many meaningful engagements as possible without diving too deep into it.
 
-### `npm test`
+### Test
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+I have tried so hard on firing/simulating UI events using `testing library`. However it seemed that `jsdom` is just pretending to be a browser. Then I found that I need to use a framework for e2e testing. React docs advices developers to use Cypress/puppeteer.[https://reactjs.org/docs/testing-environments.html#mocking-a-rendering-surface]
 
-### `npm run build`
+I decided to use Cypress since it seemed easier. But I had issues with it when it comes to React Component testing. Testing the DOM environment is fine but I couldn't test the Component states/hooks etc. I had webpack issues, dependency errors, not finding file on my system issues... And I didn't want to eject react scripts. Because of that I couldn't test the engagements.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Than I thought "I could somehow simulate/mock video play states using testing-library". But since it uses jsdom, I had no luck with that.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+I know that with `enzyme` you can test the Component states, hooks, etc. But enzyme only supports React up to version 16. Yes there are "unofficial" enzyme packages that supports 17 but I didn't want to risk wasting several hours trying to fix a package that has potential issues. And also I didn't want to downgrade React to use enzyme.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Now that I'm thinking, if engagement function also sets attributes of the video element, like `<video engage-first-quartile></video>`, it can be tested pretty easily.
 
-### `npm run eject`
+Well, if I had, let's say, a week maybe I could have definitely write tests that cover engagements.
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+### Thoughts
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+I learned a lot during this task. I knew how to test simple functions and simple things but when it comes to e2e or integration testing, I didn't have enough knowledge. I researched and learned lot of things about testing. And besides I always wanted to dive deep into it.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+In my current team, we don't write tests, which is unfortunate.
