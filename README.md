@@ -6,6 +6,12 @@ Standard react-script command plus `npm run test-e2e`
 
 ## Notes
 
+### Tested Device
+
+Device `iPhone 8 (iOS 15.0)`
+
+Browser `Safari`
+
 ### Engagements
 
 - BLUR
