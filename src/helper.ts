@@ -51,6 +51,10 @@ const isInViewport = ({
 /**
  * Fires engagements to the console. Note that this function is putting `ENGAGE_` string before engagementName. ie: `ENGAGE_${eventName}`
  * Data gets `timestamp` property and its value is `Date.now()`
+ * Logs this pattern to the console
+ * ```js
+ * `ENGAGE_${engagementName.toString()}`, { ...data, timestamp: Date.now() }
+ * ```
  * @param {VideoEngagements} engagementName
  * @param {object} data
  */

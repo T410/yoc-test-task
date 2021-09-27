@@ -29,8 +29,7 @@ export interface VideoControlProps {
 	changeMute: (val: boolean) => void;
 }
 
-export interface VideoProps {
+export interface VideoProps extends VideoWrapperProps {
 	isMuted: boolean;
-	onCustomEvent: (e: VideoEngagements, data?: {}) => void;
 	setIsFinished: (val: boolean) => void;
 }

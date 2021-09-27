@@ -3,7 +3,7 @@ import { Video } from "../Video";
 import { isInViewport, calculateVisibilityPercentage, engage } from "../../../helper";
 import "@testing-library/jest-dom";
 import "@testing-library/jest-dom/extend-expect";
-import { render, fireEvent, waitFor } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { VideoEngagements } from "../../../app.module";
 
 //Custom matcher interface
@@ -84,6 +84,7 @@ describe("test for video adunit", () => {
 		});
 		const { unmount } = render(<Video engage={engage} />);
 
+		//Extending expect to match for the type EventListenerObjectArray
 		expect.extend({
 			toContainEventListener(received: EventListenerObjectArray, key: string): jest.CustomMatcherResult {
 				const found = received.find(({ eventName }) => eventName === key);
