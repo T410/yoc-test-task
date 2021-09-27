@@ -20,6 +20,10 @@ export enum EventBy {
 	AUTO = "AUTO",
 }
 
+export interface VideoWrapperProps {
+	engage: (engagementName: VideoEngagements, data?: {}) => void;
+}
+
 export interface VideoControlProps {
 	isMuted: boolean;
 	changeMute: (val: boolean) => void;

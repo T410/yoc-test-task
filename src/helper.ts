@@ -1,4 +1,4 @@
-import { VideoEngagements } from "../../app.module";
+import { VideoEngagements } from "./app.module";
 /**
  * Calculates and returns the visibility percentage of the given element of the viewport
  * @param {object}

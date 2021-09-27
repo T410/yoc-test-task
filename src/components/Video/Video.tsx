@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { usePrevious } from "../../CustomHooks";
-import { calculateVisibilityPercentage, engage } from "./helper";
+import { calculateVisibilityPercentage } from "../../helper";
 import style from "./Video.module.css";
 import { poster, volume_off, volume_on } from "../../assets";
-import { EventBy, VideoEngagements, VideoControlProps, VideoProps } from "../../app.module";
+import { EventBy, VideoEngagements, VideoWrapperProps, VideoControlProps, VideoProps } from "../../app.module";
 
 const VideoControls: React.FunctionComponent<VideoControlProps> = ({ isMuted, changeMute }) => {
 	//Storing the mute button element in a ref to change its src when it's clicked/tapped
@@ -34,7 +34,7 @@ const VideoControls: React.FunctionComponent<VideoControlProps> = ({ isMuted, ch
 
 	return (
 		<>
-			<div className={style.muteButtonContainer} onClick={onClickMute}>
+			<div className={style.muteButtonContainer} onClick={onClickMute} data-testid="mute">
 				<img src={volume_off} ref={imgRef} alt={"volume off button"} />
 			</div>
 		</>
@@ -214,7 +214,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 	);
 };
 
-const VideoWrapper: React.FunctionComponent = () => {
+const VideoWrapper: React.FunctionComponent<VideoWrapperProps> = ({ engage }) => {
 	//To pass isMuted flag to Video Component from VideoControls Component.
 	//By passing setIsMuted function to VideoControls, isMuted state mutes/unmutes the video
 	const [isMuted, setIsMuted] = useState(true);

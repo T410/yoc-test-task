@@ -1,5 +1,13 @@
 /// <reference types="cypress"/>
-import { engage } from "../../src/components/Video/helper";
+
+/**
+ * I couldn't get scrolling working in jest. Apparently jsdom (Jest uses jsdom) is "pretending to be a browser" (https://github.com/jsdom/jsdom#pretending-to-be-a-visual-browser)
+ * I researched and I found that I need to use an e2e testing framework. (https://reactjs.org/docs/testing-environments.html#mocking-a-rendering-surface)
+ *
+ * And I couldn't get Component Testing working in Cypress. I have triead a lot of different things but I got lots of webpack errors.
+ * I didn't want to eject and mess with the original structure a lot.
+ */
+
 describe("Video play test", { viewportWidth: 375, viewportHeight: 667 }, () => {
 	beforeEach(() => {
 		cy.visit("http://localhost:3000");
@@ -37,7 +45,7 @@ describe("Video play test", { viewportWidth: 375, viewportHeight: 667 }, () => {
 		});
 	});
 
-	it("should play when scrolled and the video is more than 50% visible", () => {
+	it("should play muted when scrolled and the video is more than 50% visible", () => {
 		cy.get("video").then((elements) => {
 			const video = elements[0];
 			const { top, height } = video.getBoundingClientRect();
@@ -50,7 +58,7 @@ describe("Video play test", { viewportWidth: 375, viewportHeight: 667 }, () => {
 		});
 	});
 
-	it("should play when scrolled and the video is 100% visible", () => {
+	it("should play muted when scrolled and the video is 100% visible", () => {
 		cy.get("video").then((elements) => {
 			const video = elements[0];
 			const { height } = video.getBoundingClientRect();
@@ -142,21 +150,12 @@ describe("Video play test", { viewportWidth: 375, viewportHeight: 667 }, () => {
 			});
 		});
 	});
+
+	it("should mute/unmute when clicking the mute button", () => {
+		cy.get("[data-testid=mute]").click();
+		cy.get("video").scrollIntoView({ duration: 100 }).should("have.prop", "muted", false);
+
+		cy.get("[data-testid=mute]").click();
+		cy.get("video").scrollIntoView({ duration: 100 }).should("have.prop", "muted", true);
+	});
 });
-
-// describe("Fires engagements", { viewportWidth: 375, viewportHeight: 667 }, () => {
-// 	beforeEach(() => {
-// 		cy.visit("http://localhost:3000");
-// 		//Wait so that the page finishes its layout
-// 		cy.wait(1000);
-// 	});
-
-// 	const obj = { engage };
-// 	it("fires LOAD_STARTED", () => {
-// 		cy.spy(obj, "engage");
-// 		cy.get("video").scrollIntoView({ duration: 100 });
-// 		cy.wait(1000).then(() => {
-// 			expect(obj.engage).to.be.called;
-// 		});
-// 	});
-// });
