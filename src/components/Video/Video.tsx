@@ -1,40 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { usePrevious } from "../../CustomHooks";
+import { calculateVisibilityPercentage } from "../../helper";
 import style from "./Video.module.css";
 import { poster, volume_off, volume_on } from "../../assets";
-
-enum VideoEngagements {
-	BLUR = "BLUR",
-	FOCUS = "FOCUS",
-	VIDEO_LOAD_START = "VIDEO_LOAD_START",
-	VIDEO_CAN_PLAY = "VIDEO_CAN_PLAY",
-	VIDEO_MUTE = "VIDEO_MUTE",
-	VIDEO_UNMUTE = "VIDEO_UNMUTE",
-	VIDEO_PLAY = "VIDEO_PLAY",
-	VIDEO_FIRST_QUARTILE = "VIDEO_FIRST_QUARTILE",
-	VIDEO_HALF = "VIDEO_HALF",
-	VIDEO_THIRD_QUARTILE = "VIDEO_THIRD_QUARTILE",
-	VIDEO_FINISH = "VIDEO_FINISH",
-	VIDEO_PAUSE = "VIDEO_PAUSE",
-	VIDEO_VIEWED = "VIDEO_VIEWED",
-}
-
-//Actions caused by the user or automatically
-enum EventBy {
-	USER = "USER",
-	AUTO = "AUTO",
-}
-
-interface VideoControlProps {
-	isMuted: boolean;
-	changeMute: (val: boolean) => void;
-}
-
-interface VideoProps {
-	isMuted: boolean;
-	onCustomEvent: (e: VideoEngagements, data?: {}) => void;
-	setIsFinished: (val: boolean) => void;
-}
+import { EventBy, VideoEngagements, VideoWrapperProps, VideoControlProps, VideoProps } from "../../app.module";
 
 const VideoControls: React.FunctionComponent<VideoControlProps> = ({ isMuted, changeMute }) => {
 	//Storing the mute button element in a ref to change its src when it's clicked/tapped
@@ -65,14 +34,14 @@ const VideoControls: React.FunctionComponent<VideoControlProps> = ({ isMuted, ch
 
 	return (
 		<>
-			<div className={style.muteButtonContainer} onClick={onClickMute}>
+			<div className={style.muteButtonContainer} onClick={onClickMute} data-testid="mute">
 				<img src={volume_off} ref={imgRef} alt={"volume off button"} />
 			</div>
 		</>
 	);
 };
 
-const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, setIsFinished }) => {
+const Video: React.FunctionComponent<VideoProps> = ({ isMuted, engage, setIsFinished }) => {
 	//Video element
 	const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -90,63 +59,25 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 	const [ended, setEnded] = useState(false);
 
 	/**
-	 * Checks and returns boolean if the given element is visible on the viewport
-	 * @param {HTMLElement} element
-	 * @returns {boolean}
-	 */
-	const isInViewport = (element: HTMLElement): boolean => {
-		const { top, bottom } = element.getBoundingClientRect();
-		// Visual Viewport seems promising. See https://developer.mozilla.org/en-US/docs/Web/API/Visual_Viewport_API
-		const viewportHeight = window.visualViewport?.height | window.innerHeight;
-		//If top of the element is less than viewportHeight and the bottom is greater than 0 that means the element is in the viewport
-		return top < viewportHeight && bottom > 0;
-	};
-
-	/**
-	 * Calculates and returns the visibility percentage of the given element of the viewport
-	 * @param {HTMLElement} element
-	 * @returns {number} positive integer number
-	 */
-	const calculateVisibilityPercentage = (element: HTMLElement): number => {
-		const { height, top, bottom } = element.getBoundingClientRect();
-		const viewportHeight = window.visualViewport?.height | window.innerHeight;
-		let result: number;
-
-		//This if block may look confusing but note that this function will only get called when the element is visible on the viewport
-		if (top < 0) {
-			//If the element's top is less than 0, which means the element is "at least" 1 pixel above the viewport.
-			result = (bottom / height) * 100;
-		} else if (bottom > viewportHeight) {
-			//If the element's bottom is greater than viewport height, which means the element is "at least" 1 pixel below the viewport.
-			result = ((viewportHeight - top) / height) * 100;
-		} else {
-			//If the element's top is greater than 0 and its bottom is less than viewportHeight, that means it's 100% visible.
-			result = 100;
-		}
-		return Math.floor(result);
-	};
-
-	/**
-	 *
+	 * Plays the video if it is not ended or pauses it
 	 * @param {boolean} play Video will play based on this boolean if it can play
-	 * @param data
 	 */
 	const playPauseHandler = useCallback(
-		(play: boolean, eventBy: EventBy = EventBy.AUTO): void => {
+		(play: boolean): void => {
 			//If isPlaying is not equal to play and videRef.current exists
-			if (play !== isPlaying && videoRef.current) {
-				if (play && !isPlaying && !ended && visiblePercentage >= 50) {
+			if (videoRef.current) {
+				if (play && !ended) {
 					videoRef.current.play();
-					onCustomEvent(VideoEngagements.VIDEO_PLAY, { eventBy });
+					engage(VideoEngagements.VIDEO_PLAY, { eventBy: EventBy.AUTO });
 					setIsPlaying(true);
-				} else if (isPlaying) {
+				} else {
 					videoRef.current.pause();
-					onCustomEvent(VideoEngagements.VIDEO_PAUSE, { eventBy });
+					engage(VideoEngagements.VIDEO_PAUSE, { eventBy: EventBy.AUTO });
 					setIsPlaying(false);
 				}
 			}
 		},
-		[onCustomEvent, isPlaying, ended, visiblePercentage]
+		[engage, ended]
 	);
 
 	/**
@@ -158,29 +89,29 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 			{ currentTime } = video;
 
 		if (!videoViewed) {
-			//2 seconds view time
+			//2 seconds view time (IAB/MRC viewability standards)
 			if (currentTime >= 2) {
 				setVideoViewed(true);
-				onCustomEvent(VideoEngagements.VIDEO_VIEWED);
+				engage(VideoEngagements.VIDEO_VIEWED);
 			}
 		}
 		if (!firstQuartileFired) {
 			//25% view time
 			if (currentTime > video.duration * 0.25) {
 				setFirstQuartileFired(true);
-				onCustomEvent(VideoEngagements.VIDEO_FIRST_QUARTILE);
+				engage(VideoEngagements.VIDEO_FIRST_QUARTILE);
 			}
 		} else if (!halfFired) {
 			//50% view time
 			if (currentTime > video.duration * 0.5) {
 				setHalfFired(true);
-				onCustomEvent(VideoEngagements.VIDEO_HALF);
+				engage(VideoEngagements.VIDEO_HALF);
 			}
 		} else if (!thirdQuartileFired) {
 			//75% view time
 			if (currentTime > video.duration * 0.75) {
 				setThirdQuartileFired(true);
-				onCustomEvent(VideoEngagements.VIDEO_THIRD_QUARTILE);
+				engage(VideoEngagements.VIDEO_THIRD_QUARTILE);
 			}
 		} else if (!ended) {
 			//100% view time
@@ -190,9 +121,9 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 				//Remove the scrollListener since the video does not loop and we won't be needing it anymore
 				document.removeEventListener("scroll", scrollListener);
 				setEnded(true);
-				//Caling this with ended parameter. Note that this function was passed from VideoWrapper
+				//Setting isFinished state that passed from VideoWrapper
 				setIsFinished(true);
-				onCustomEvent(VideoEngagements.VIDEO_FINISH);
+				engage(VideoEngagements.VIDEO_FINISH);
 			}
 		}
 	};
@@ -202,7 +133,7 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 	 * Combining `VIDEO_LOAD_START` and `VIDEO_PLAY` may give us some idea about the content quality (Will the user skip reading and scroll to the bottom fast or not)
 	 */
 	const loadStartListener = () => {
-		onCustomEvent(VideoEngagements.VIDEO_LOAD_START);
+		engage(VideoEngagements.VIDEO_LOAD_START);
 	};
 
 	/**
@@ -210,45 +141,50 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 	 */
 	const scrollListener = useCallback(() => {
 		if (videoRef.current) {
-			const isVisible = isInViewport(videoRef.current);
-			const percentage = calculateVisibilityPercentage(videoRef.current);
+			const { top, bottom } = videoRef.current.getBoundingClientRect();
+			const percentage = calculateVisibilityPercentage({
+				top,
+				bottom,
+				viewportHeight: window.visualViewport?.height | window.innerHeight, // Visual Viewport seems promising. See https://developer.mozilla.org/en-US/docs/Web/API/Visual_Viewport_API
+			});
 			setVisiblePercentage(percentage);
-			if (isVisible && percentage >= 50) {
-				//If the visiblity percentage is greater than or equal to 50%, then play it
-				playPauseHandler(true);
+			if (percentage >= 50) {
+				//If the visiblity percentage is greater than or equal to 50% and it is not currently playing, play it
+				!isPlaying && playPauseHandler(true);
 			} else {
-				//If the video can not be played, then pause it
-				playPauseHandler(false);
+				//If not and if it is currently playing, pause it
+				isPlaying && playPauseHandler(false);
 			}
 		}
-	}, [playPauseHandler]);
+	}, [playPauseHandler, isPlaying]);
 
 	/**
-	 * visibilitychange listener function that updates blur state
+	 * visibilitychange listener function that updates blur state and fires engagements
 	 */
 	const blurFocusListener = useCallback(() => {
 		if (document.visibilityState === "hidden") {
 			setBlur(true);
-			onCustomEvent(VideoEngagements.BLUR);
+			engage(VideoEngagements.BLUR);
 		} else {
 			setBlur(false);
-			onCustomEvent(VideoEngagements.FOCUS);
+			engage(VideoEngagements.FOCUS);
 		}
-	}, [onCustomEvent]);
+	}, [engage]);
 
 	useEffect(() => {
 		//Checking if blur value has changed or not. So the code block in this if will only run when blur dependency changes.
 		//Normally when one of the dependency changes, the callback runs
-		if (prevBlur !== blur) {
-			if (blur) {
+		//Undefined check is to prevent first run. If we are to remove that then it automatically tries to run the video when the page loads
+		if (prevBlur !== undefined && prevBlur !== blur) {
+			if (blur && isPlaying) {
 				//If the user task away from the page (Goes to home screen of their device or goes to another tab), pause the video
 				playPauseHandler(false);
-			} else {
+			} else if (!ended && visiblePercentage >= 50) {
 				//If the video has not yet been finished and it is more than 50% visible in the viewport, play the video
 				playPauseHandler(true);
 			}
 		}
-	}, [prevBlur, blur, playPauseHandler]);
+	}, [prevBlur, blur, visiblePercentage, isPlaying, ended, playPauseHandler]);
 
 	useEffect(() => {
 		document.addEventListener("scroll", scrollListener);
@@ -272,11 +208,12 @@ const Video: React.FunctionComponent<VideoProps> = ({ isMuted, onCustomEvent, se
 			onLoadStart={loadStartListener}
 			onTimeUpdate={timeUpdateListener}
 			playsInline={true}
+			data-testid="video"
 		></video>
 	);
 };
 
-const VideoWrapper: React.FunctionComponent = () => {
+const VideoWrapper: React.FunctionComponent<VideoWrapperProps> = ({ engage }) => {
 	//To pass isMuted flag to Video Component from VideoControls Component.
 	//By passing setIsMuted function to VideoControls, isMuted state mutes/unmutes the video
 	const [isMuted, setIsMuted] = useState(true);
@@ -286,16 +223,6 @@ const VideoWrapper: React.FunctionComponent = () => {
 	//PS: using poster attribute also doesn't work after the video finishes.
 	//Well, this behaviour is like hiding the video after it finishes and showing the endcard, obviously
 	const [isFinished, setIsFinished] = useState(false);
-
-	/**
-	 * Fires engagements to the console. Note that this function is putting `ENGAGE_` string before engagementName. ie: `ENGAGE_${eventName}`
-	 * Data gets `timestamp` property and its value is `Date.now()`
-	 * @param {VideoEngagements} engagementName
-	 * @param {object} data
-	 */
-	const engage = (engagementName: VideoEngagements, data?: {}) => {
-		console.log(`ENGAGE_${engagementName.toString()}`, { ...data, timestamp: Date.now() });
-	};
 
 	/**
 	 * Gets the new mute state from VideoControls, updates `isMuted` state and fires engagement according to that
@@ -313,14 +240,16 @@ const VideoWrapper: React.FunctionComponent = () => {
 				<div>
 					<VideoControls isMuted={isMuted} changeMute={changeMute} />
 					<div className={style.innerContainer}>
-						<Video isMuted={isMuted} onCustomEvent={engage} setIsFinished={setIsFinished} />
+						<Video isMuted={isMuted} engage={engage} setIsFinished={setIsFinished} />
 					</div>
 				</div>
 			) : (
-				<img className={style.poster} src={poster} alt="airbnb ad poster" />
+				<img className={style.poster} src={poster} data-testid="poster" alt="airbnb ad poster" />
 			)}
 		</div>
 	);
 };
 
+//I didn't want to call the Component as VideoWrapper so I exported like this
+//I could have name this file as Ad.tsx and name the VideoWrapper to Ad but I wanted to be more specific on naming
 export { VideoWrapper as Video };
